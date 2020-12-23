@@ -1,22 +1,22 @@
 (ns metabase.driver.db2
   (:require [clojure.java.jdbc :as jdbc]
+            [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [clojure.string :as str]
             [honeysql.core :as hsql]
             [metabase.driver :as driver]
             [metabase.driver.common :as driver.common]
             [metabase.driver.sql
              [query-processor :as sql.qp]
-             [util :as sql.u]]
+            ]
             [metabase.driver.sql-jdbc
              [connection :as sql-jdbc.conn]
              [execute :as sql-jdbc.execute]
              [sync :as sql-jdbc.sync]]
-            [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.util
              [honeysql-extensions :as hx]
              [ssh :as ssh]])
-  (:import [java.sql ResultSet Types]
-           java.util.Date))
+  (:import [java.sql DatabaseMetaData ResultSet]))
 
 (driver/register! :db2, :parent :sql-jdbc)
 
@@ -121,8 +121,8 @@
 (defmethod sql.qp/unix-timestamp->timestamp [:db2 :seconds] [_ _ expr]
   (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int expr))))
 
-(defmethod sql.qp/unix-timestamp->timestamp [:db2 :milliseconds] [driver _ expr]
-  (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int (hx// expr 1000)))))))
+  (defmethod sql.qp/unix-timestamp->timestamp [:db2 :milliseconds] [driver _ expr]
+    (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int (hx// expr 1000)))))))
 
 (def ^:private now (hsql/raw "current timestamp"))
 
@@ -180,18 +180,70 @@
     (keyword "LONG VARGRAPHIC")           :type/*
     (keyword "VARCHAR() FOR BIT DATA")    :type/*} database-type))
 
-(defmethod sql-jdbc.sync/excluded-schemas :db2 [_]
-  #{"SQLJ" 
-    "SYSCAT" 
-    "SYSFUN" 
-    "SYSIBMADM" 
-    "SYSIBMINTERNAL" 
-    "SYSIBMTS" 
+(def excluded-schemas
+  #{"SQLJ"
+    "SYSCAT"
+    "SYSFUN"
+    "SYSIBMADM"
+    "SYSIBMINTERNAL"
+    "SYSIBMTS"
     "SPOOLMAIL"
-    "SYSPROC" 
-    "SYSPUBLIC" 
+    "SYSPROC"
+    "SYSPUBLIC"
     "SYSSTAT"
     "SYSTOOLS"})
 
+(def included-schemas
+  #{"CRMLIB"
+    "LTL400TST3"
+    "LTL400MOD3"
+    "LTL400V403"
+    "LTL400M403"
+    "MASTER"
+    "WEBLIB"
+    "TAALIB"
+    "ONBOARDLIB"
+    "EMUNIQUE"
+})
+
+(defmethod sql-jdbc.sync/excluded-schemas :db2 [_]
+  excluded-schemas)
+
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
+
+; (defn- materialized-views
+;   "Fetch the Materialized Views for a Vertica `database`.
+;    These are returned as a set of maps, the same format as `:tables` returned by `describe-database`."
+;   [database]
+;   (try (set (jdbc/query (sql-jdbc.conn/db->pooled-connection-spec database)
+;                         ["select TABLE_SCHEMA \"schema\",TABLE_NAME AS \"name\" FROM QSYS2.SYSTABLES WHERE TABLE_TYPE='T' AND TABLE_SCHEMA IN ('CRMLIB', 'LTL400TST3', 'LTL400MOD3', 'LTL400V403', 'LTL400M403', 'MASTER', 'TAALIB', 'ONBOARDLIB', 'EMUNIQUE', 'EMDATA') ORDER BY TABLE_NAME ASC;"]))
+;        (catch Throwable e
+;          (log/error e "Failed to fetch materialized views for this database"))))
+
+; (defmethod driver/describe-database :db2
+;   [driver database]
+;   (-> ((get-method driver/describe-database :sql-jdbc) driver database)
+;       (update :tables set/union (materialized-views database))))
+
+(defn- get-tables
+  "Fetch a JDBC Metadata ResultSet of tables in the DB, optionally limited to ones belonging to a given schema."
+  ^ResultSet [^DatabaseMetaData metadata, ^String schema-or-nil]
+  (jdbc/result-set-seq (.getTables metadata nil schema-or-nil "%" ; tablePattern "%" = match all tables
+                                   (into-array String ["TABLE", "VIEW"]))))
+
+(defn- fast-active-tables
+  "DB2, fast implementation of `fast-active-tables` to support exclusion list."
+  [driver, ^DatabaseMetaData metadata, database]
+  (let [all-schemas (set (map :table_schem (jdbc/result-set-seq (.getSchemas metadata))))
+        schemas     (set/intersection all-schemas included-schemas)] ; use defined inclusion list
+    (set (for [schema schemas
+               table-name (mapv :table_name (get-tables metadata schema))]
+           {:name   table-name
+            :schema schema}))))
+
+;; Overridden to have access to the database with the configured property dbnames (inclusion list)
+;; which will be used to filter the schemas.
+(defmethod driver/describe-database :db2 [driver database]
+  (jdbc/with-db-metadata [metadata (sql-jdbc.conn/db->pooled-connection-spec database)]
+    {:tables (fast-active-tables, driver, ^DatabaseMetaData metadata, database)}))

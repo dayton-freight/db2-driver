@@ -22,7 +22,7 @@ driver:
         - dbname
         - name: db
           display-name: Database name
-          placeholder: Datbase Name
+          placeholder: Database Name
     - user
     - password
   connection-properties-include-tunnel-config: true
