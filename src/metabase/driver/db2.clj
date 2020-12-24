@@ -117,17 +117,30 @@
 (defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/DATE]
   [_ rs _ i]
   (fn []
-    (.toLocalDate (.getDate rs i))))
+    (try
+      (.toLocalDate (.getDate rs i))
+      (catch Exception e
+        ()))
+    ))
 
 (defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/TIME]
   [_ rs _ i]
   (fn []
-    (.toLocalTime (.getTime rs i))))
+    (try 
+      (.toLocalTime (.getTime rs i))
+      (catch Exception e
+        ())
+      )
+    ))
 
 (defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/TIMESTAMP]
   [_ rs _ i]
   (fn []
-    (.toLocalDateTime (.getTimestamp rs i))))
+    (try
+      (.toLocalDateTime (.getTimestamp rs i))
+      (catch Exception e
+        ()))
+    ))
 
 
 
@@ -151,36 +164,36 @@
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel details))]
     (= 1 (first (vals (first (jdbc/query connection ["VALUES 1"])))))))
 
-(def ^:private database-type->base-type
-  (sql-jdbc.sync/pattern-based-database-type->base-type
-   [
-    [#"BIGINT"      :type/BigInteger]
-    [#"BINARY"      :type/*]
-    [#"BLOB"        :type/*]
-    [#"RAW"         :type/*]
-    [#"BOOLEAN"     :type/Boolean]
-    [#"CHAR"        :type/Text]
-    [#"CLOB"        :type/Text]
-    [#"DBCLOB"      :type/Text]
-    [#"DECIMAL"     :type/Decimal]
-    [#"DECFLOAT"    :type/Decimal]
-    [#"VARCHAR"     :type/Text]
-    [#"VARGRAPHIC"  :type/Text]
-    [#"DATE"        :type/Date]
-    [#"DOUBLE"      :type/Float]
-    [#"FLOAT"       :type/Float]
-    [#"GRAPHIC"     :type/Text]
-    [#"INTEGER"     :type/Integer]
-    [#"NUMERIC"      :type/Decimal]
-    [#"REAL"        :type/Float]
-    [#"SMALLINT"    :type/Integer]
-    [#"TIMESTAMP"   :type/DateTime]
-    [#"TIME"        :type/Time]
-    [#"XML"         :type/Text]]))
-
-(defmethod sql-jdbc.sync/database-type->base-type :db2
-  [_ column-type]
-  (database-type->base-type column-type))
+(defmethod sql-jdbc.sync/database-type->base-type :db2 [_ database-type]
+  ({:BIGINT       :type/BigInteger    ;; Mappings for DB2 types to Metabase types.
+    :BINARY       :type/*             ;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
+    :BLOB         :type/*
+    :BOOLEAN      :type/Boolean
+    :CHAR         :type/Text
+    :CLOB         :type/Text
+    :DATALINK     :type/*
+    :DATE         :type/Date
+    :DBCLOB       :type/Text
+    :DECIMAL      :type/Decimal
+    :DECFLOAT     :type/Decimal
+    :DOUBLE       :type/Float
+    :FLOAT        :type/Float
+    :GRAPHIC      :type/Text
+    :INTEGER      :type/Integer
+    :NUMERIC      :type/Decimal
+    :REAL         :type/Float
+    :ROWID        :type/*
+    :SMALLINT     :type/Integer
+    :TIME         :type/Time
+    :TIMESTAMP    :type/DateTime
+    :VARCHAR      :type/Text
+    :VARGRAPHIC   :type/Text
+    :XML          :type/Text
+    (keyword "CHAR() FOR BIT DATA")       :type/*
+    (keyword "LONG VARCHAR")              :type/*
+    (keyword "LONG VARCHAR FOR BIT DATA") :type/*
+    (keyword "LONG VARGRAPHIC")           :type/*
+    (keyword "VARCHAR() FOR BIT DATA")    :type/*} database-type))
 
 (def excluded-schemas
   #{"SQLJ"
