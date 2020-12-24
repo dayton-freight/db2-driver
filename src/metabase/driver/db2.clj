@@ -16,7 +16,7 @@
             [metabase.util
              [honeysql-extensions :as hx]
              [ssh :as ssh]])
-  (:import [java.sql DatabaseMetaData ResultSet]))
+  (:import [java.sql DatabaseMetaData ResultSet Types]))
 
 (driver/register! :db2, :parent :sql-jdbc)
 
@@ -52,33 +52,19 @@
     message))
 
 (defmethod driver.common/current-db-time-date-formatters :db2 [_]     ;; "2019-09-14T18:03:20.679658000-00:00"
-;;  (println "current-db-time-date-formatters")
   (mapcat
    driver.common/create-db-time-formatters
-   ["yyyy-MM-dd HH:mm:ss"
-    "yyyy-MM-dd HH:mm:ss.SSS"
-    "yyyy-MM-dd'T'HH:mm:ss.SSS"
-    "yyyy-MM-dd HH:mm:ss.SSSZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-    "yyyy-MM-dd HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ"]))
+   ["yyyy-MM-dd HH:mm:ss"]))
 
 (defmethod driver.common/current-db-time-native-query :db2 [_]
-;;  (println "current-db-time-native-query")
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1")       ;; "SELECT CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1")
+  "VALUES VARCHAR_FORMAT(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss')")       ;; "SELECT CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1")
 
 (defmethod driver/current-db-time :db2 [& args]
-;;  (println "current-db-time")
   (apply driver.common/current-db-time args))
 
-
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                           metabase.driver.sql impls                                            |
-;;; +----------------------------------------------------------------------------------------------------------------+
+(defmethod driver/db-start-of-week :db2
+  [_]
+  :sunday)
 
 (defn- date-format [format-str expr] (hsql/call :varchar_format expr (hx/literal format-str)))
 (defn- str-to-date [format-str expr] (hsql/call :to_date expr (hx/literal format-str)))
@@ -128,6 +114,22 @@
 
 (defmethod sql.qp/current-datetime-fn :db2 [_] now)
 
+(defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/DATE]
+  [_ rs _ i]
+  (fn []
+    (.toLocalDate (.getDate rs i))))
+
+(defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/TIME]
+  [_ rs _ i]
+  (fn []
+    (.toLocalTime (.getTime rs i))))
+
+(defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/TIMESTAMP]
+  [_ rs _ i]
+  (fn []
+    (.toLocalDateTime (.getTimestamp rs i))))
+
+
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
@@ -149,36 +151,36 @@
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel details))]
     (= 1 (first (vals (first (jdbc/query connection ["VALUES 1"])))))))
 
-(defmethod sql-jdbc.sync/database-type->base-type :db2 [_ database-type]
-  ({:BIGINT       :type/BigInteger    ;; Mappings for DB2 types to Metabase types.
-    :BINARY       :type/*             ;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
-    :BLOB         :type/*
-    :BOOLEAN      :type/Boolean
-    :CHAR         :type/Text
-    :CLOB         :type/Text
-    :DATALINK     :type/*
-    :DATE         :type/Date
-    :DBCLOB       :type/Text
-    :DECIMAL      :type/Decimal
-    :DECFLOAT     :type/Decimal
-    :DOUBLE       :type/Float
-    :FLOAT        :type/Float
-    :GRAPHIC      :type/Text
-    :INTEGER      :type/Integer
-    :NUMERIC      :type/Decimal
-    :REAL         :type/Float
-    :ROWID        :type/*
-    :SMALLINT     :type/Integer
-    :TIME         :type/Time
-    :TIMESTAMP    :type/DateTime
-    :VARCHAR      :type/Text
-    :VARGRAPHIC   :type/Text
-    :XML          :type/Text
-    (keyword "CHAR() FOR BIT DATA")       :type/*
-    (keyword "LONG VARCHAR")              :type/*
-    (keyword "LONG VARCHAR FOR BIT DATA") :type/*
-    (keyword "LONG VARGRAPHIC")           :type/*
-    (keyword "VARCHAR() FOR BIT DATA")    :type/*} database-type))
+(def ^:private database-type->base-type
+  (sql-jdbc.sync/pattern-based-database-type->base-type
+   [
+    [#"BIGINT"      :type/BigInteger]
+    [#"BINARY"      :type/*]
+    [#"BLOB"        :type/*]
+    [#"RAW"         :type/*]
+    [#"BOOLEAN"     :type/Boolean]
+    [#"CHAR"        :type/Text]
+    [#"CLOB"        :type/Text]
+    [#"DBCLOB"      :type/Text]
+    [#"DECIMAL"     :type/Decimal]
+    [#"DECFLOAT"    :type/Decimal]
+    [#"VARCHAR"     :type/Text]
+    [#"VARGRAPHIC"  :type/Text]
+    [#"DATE"        :type/Date]
+    [#"DOUBLE"      :type/Float]
+    [#"FLOAT"       :type/Float]
+    [#"GRAPHIC"     :type/Text]
+    [#"INTEGER"     :type/Integer]
+    [#"NUMERIC"      :type/Decimal]
+    [#"REAL"        :type/Float]
+    [#"SMALLINT"    :type/Integer]
+    [#"TIMESTAMP"   :type/DateTime]
+    [#"TIME"        :type/Time]
+    [#"XML"         :type/Text]]))
+
+(defmethod sql-jdbc.sync/database-type->base-type :db2
+  [_ column-type]
+  (database-type->base-type column-type))
 
 (def excluded-schemas
   #{"SQLJ"
@@ -211,20 +213,6 @@
 
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
-
-; (defn- materialized-views
-;   "Fetch the Materialized Views for a Vertica `database`.
-;    These are returned as a set of maps, the same format as `:tables` returned by `describe-database`."
-;   [database]
-;   (try (set (jdbc/query (sql-jdbc.conn/db->pooled-connection-spec database)
-;                         ["select TABLE_SCHEMA \"schema\",TABLE_NAME AS \"name\" FROM QSYS2.SYSTABLES WHERE TABLE_TYPE='T' AND TABLE_SCHEMA IN ('CRMLIB', 'LTL400TST3', 'LTL400MOD3', 'LTL400V403', 'LTL400M403', 'MASTER', 'TAALIB', 'ONBOARDLIB', 'EMUNIQUE', 'EMDATA') ORDER BY TABLE_NAME ASC;"]))
-;        (catch Throwable e
-;          (log/error e "Failed to fetch materialized views for this database"))))
-
-; (defmethod driver/describe-database :db2
-;   [driver database]
-;   (-> ((get-method driver/describe-database :sql-jdbc) driver database)
-;       (update :tables set/union (materialized-views database))))
 
 (defn- get-tables
   "Fetch a JDBC Metadata ResultSet of tables in the DB, optionally limited to ones belonging to a given schema."
