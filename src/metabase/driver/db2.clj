@@ -193,7 +193,8 @@
     (keyword "LONG VARCHAR")              :type/*
     (keyword "LONG VARCHAR FOR BIT DATA") :type/*
     (keyword "LONG VARGRAPHIC")           :type/*
-    (keyword "VARCHAR () FOR BIT DATA")    :type/*} database-type))
+    (keyword "VARCHAR () FOR BIT DATA")    :type/*
+    (keyword "numeric() identity") :type/PK} database-type))
 
 (def excluded-schemas
   #{"SQLJ"
@@ -248,3 +249,6 @@
 (defmethod driver/describe-database :db2 [driver database]
   (jdbc/with-db-metadata [metadata (sql-jdbc.conn/db->pooled-connection-spec database)]
     {:tables (fast-active-tables, driver, ^DatabaseMetaData metadata, database)}))
+
+(defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
+  "SET SESSION TIME ZONE = %s")
