@@ -189,11 +189,11 @@
     :VARCHAR      :type/Text
     :VARGRAPHIC   :type/Text
     :XML          :type/Text
-    (keyword "CHAR() FOR BIT DATA")       :type/*
+    (keyword "CHAR () FOR BIT DATA")       :type/*
     (keyword "LONG VARCHAR")              :type/*
     (keyword "LONG VARCHAR FOR BIT DATA") :type/*
     (keyword "LONG VARGRAPHIC")           :type/*
-    (keyword "VARCHAR() FOR BIT DATA")    :type/*} database-type))
+    (keyword "VARCHAR () FOR BIT DATA")    :type/*} database-type))
 
 (def excluded-schemas
   #{"SQLJ"
