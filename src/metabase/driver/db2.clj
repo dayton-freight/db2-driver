@@ -194,6 +194,7 @@
     :VARCHAR      :type/Text
     :VARGRAPHIC   :type/Text
     :XML          :type/Text
+    (keyword "NVARCHAR") :type/Text
     (keyword "CHAR () FOR BIT DATA")       :type/*
     (keyword "LONG VARCHAR")              :type/*
     (keyword "LONG VARCHAR FOR BIT DATA") :type/*
