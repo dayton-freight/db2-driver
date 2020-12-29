@@ -9,6 +9,7 @@
             [metabase.driver.sql
              [query-processor :as sql.qp]
             ]
+            [metabase.driver.sql-jdbc.execute.legacy-impl :as legacy]
             [metabase.driver.sql-jdbc
              [connection :as sql-jdbc.conn]
              [execute :as sql-jdbc.execute]
@@ -18,7 +19,7 @@
              [ssh :as ssh]])
   (:import [java.sql DatabaseMetaData ResultSet Types]))
 
-(driver/register! :db2, :parent :sql-jdbc)
+(driver/register! :db2, :parent #{:sql-jdbc ::legacy/use-legacy-classes-for-read-and-set})
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -113,6 +114,10 @@
 (def ^:private now (hsql/raw "current timestamp"))
 
 (defmethod sql.qp/current-datetime-fn :db2 [_] now)
+
+(defmethod sql-jdbc.execute/set-parameter [:db2 Types/DATE]
+  [_ prepared-statement i t]
+  (.setObject prepared-statement i t Types/DATE))
 
 (defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/DATE]
   [_ rs _ i]
@@ -211,6 +216,7 @@
 
 (def included-schemas
   #{"CRMLIB"
+    "ETLLIB"
     "LTL400TST3"
     "LTL400MOD3"
     "LTL400V403"
