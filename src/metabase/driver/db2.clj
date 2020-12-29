@@ -115,10 +115,6 @@
 
 (defmethod sql.qp/current-datetime-fn :db2 [_] now)
 
-(defmethod sql-jdbc.execute/set-parameter [:db2 Types/DATE]
-  [_ prepared-statement i t]
-  (.setObject prepared-statement i t Types/DATE))
-
 (defmethod sql-jdbc.execute/read-column-thunk [:db2 Types/DATE]
   [_ rs _ i]
   (fn []
@@ -194,13 +190,11 @@
     :VARCHAR      :type/Text
     :VARGRAPHIC   :type/Text
     :XML          :type/Text
-    (keyword "NVARCHAR") :type/Text
     (keyword "CHAR () FOR BIT DATA")       :type/*
     (keyword "LONG VARCHAR")              :type/*
     (keyword "LONG VARCHAR FOR BIT DATA") :type/*
     (keyword "LONG VARGRAPHIC")           :type/*
-    (keyword "VARCHAR () FOR BIT DATA")    :type/*
-    (keyword "numeric() identity") :type/PK} database-type))
+    (keyword "VARCHAR () FOR BIT DATA")    :type/*} database-type))
 
 (def excluded-schemas
   #{"SQLJ"
